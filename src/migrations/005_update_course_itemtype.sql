@@ -1,0 +1,2 @@
+ALTER TABLE "Course" 
+ALTER COLUMN "itemType" DROP NOT NULL; 

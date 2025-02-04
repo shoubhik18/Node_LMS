@@ -1,142 +1,332 @@
 import bcrypt from "bcrypt";
-import nodemailer from "nodemailer";
-import { User } from "../models/user.model";
+import { User, AdminProfile, TrainerProfile, StudentProfile } from "../models/user.model";
+import { Batch } from "../models/batch.model";
+import sequelize from "../database";
+import { Op } from "sequelize";
+import { Course } from "../models/course.model";
+
+interface UserData {
+  name: string;
+  email: string;
+  password: string;
+  mobile: number;
+  category: 'Admin' | 'Trainer' | 'Student';
+  role?: string;
+  courseTitle?: string;
+  learningMode?: 'Online' | 'Offline';
+  feeDetail?: string;
+  paymentMode?: string;
+}
 
 export class UserService {
-  static async createUser(
-    username: string,
-    email: string,
-    role: "Admin" | "Trainer" | "Learner"
-  ): Promise<User> {
+  static async createUser(userData: UserData): Promise<User> {
+    const transaction = await sequelize.transaction();
     try {
-      const password = this.generateRandomPassword();
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // Check if user with email already exists
+      const existingUser = await User.findOne({ 
+        where: { email: userData.email }
+      });
 
+      if (existingUser) {
+        throw new Error('User with this email already exists');
+      }
+
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
       const user = await User.create({
-        username,
-        email,
+        name: userData.name,
+        email: userData.email,
         password: hashedPassword,
-        role,
-      });
+        mobile: userData.mobile,
+        category: userData.category,
+      }, { transaction });
 
-      await this.sendWelcomeEmail(email, username, password, role);
+      switch (userData.category) {
+        case 'Admin':
+          await AdminProfile.create({
+            userId: user.id,
+            role: userData.role,
+          }, { transaction });
+          break;
+        case 'Trainer':
+          await TrainerProfile.create({
+            userId: user.id,
+            role: userData.role,
+          }, { transaction });
+          break;
+        case 'Student':
+          await StudentProfile.create({
+            userId: user.id,
+            courseTitle: userData.courseTitle,
+            learningMode: userData.learningMode,
+            feeDetail: userData.feeDetail,
+            paymentMode: userData.paymentMode,
+          }, { transaction });
+          break;
+      }
 
-      return user;
+      await transaction.commit();
+      
+      // Fetch the created user without password
+      const createdUser = await this.getUserById(user.id);
+      if (!createdUser) {
+        throw new Error('Failed to create user');
+      }
+      
+      return createdUser;
     } catch (error) {
-      console.error("Error in UserService.createUser:", error);
+      // Rollback transaction only if it hasn't been committed
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        // Ignore rollback error if transaction is already committed
+      }
       throw error;
     }
   }
 
-  static async authenticateUser(
-    email: string,
-    password: string
-  ): Promise<User | null> {
-    const user = await this.getUserByEmail(email);
-    if (user && (await bcrypt.compare(password, user.password))) {
-      return user;
-    }
-    return null;
+  static async authenticateUser(email: string, password: string): Promise<User | null> {
+    const user = await User.findOne({
+      where: { email },
+      include: [
+        { model: AdminProfile, as: 'adminProfile' },
+        { model: TrainerProfile, as: 'trainerProfile' },
+        { model: StudentProfile, as: 'studentProfile' }
+      ]
+    });
+
+    if (!user) return null;
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    return isValidPassword ? user : null;
   }
 
-  static async getUserByEmail(email: string): Promise<User | null> {
-    try {
-      const user = await User.findOne({
-        where: { email },
-        attributes: ["id", "username", "email", "password", "role"],
-      });
-      return user;
-    } catch (error) {
-      console.error("Error in UserService.getUserByEmail:", error);
-      throw error;
-    }
-  }
-
-  static async getUsers(): Promise<User[]> {
+  static async getUsers(filter?: { category?: string }): Promise<User[]> {
+    const whereClause = filter?.category ? { category: filter.category } : {};
+    
     return User.findAll({
-      attributes: ["id", "username", "email", "role"],
+      where: whereClause,
+      include: [
+        {
+          model: AdminProfile,
+          as: 'adminProfile',
+        },
+        {
+          model: TrainerProfile,
+          as: 'trainerProfile',
+        },
+        {
+          model: StudentProfile,
+          as: 'studentProfile',
+        },
+        {
+          model: Batch,
+          as: 'batches',
+          through: { attributes: [] },
+          include: [{
+            model: Course,
+            as: 'course',
+            attributes: ['id', 'courseName']
+          }]
+        }
+      ]
     });
   }
 
   static async getUserById(id: number): Promise<User | null> {
+    return User.findByPk(id, {
+      include: [
+        { 
+          model: AdminProfile, 
+          as: 'adminProfile' 
+        },
+        { 
+          model: TrainerProfile, 
+          as: 'trainerProfile' 
+        },
+        { 
+          model: StudentProfile, 
+          as: 'studentProfile' 
+        },
+        {
+          model: Batch,
+          as: 'batches',
+          through: { attributes: [] },
+          include: [{
+            model: Course,
+            as: 'course',
+            attributes: ['id', 'courseName']
+          }]
+        }
+      ],
+      attributes: { exclude: ['password'] }
+    });
+  }
+
+  static async updateUser(id: number, userData: any): Promise<User | null> {
+    const transaction = await sequelize.transaction();
     try {
-      const user = await User.findByPk(id, {
-        attributes: ["id", "username", "email", "role"],
-      });
-      console.log('getUserById result:', user);
-      return user;
+      const user = await User.findByPk(id);
+      if (!user) {
+        await transaction.rollback();
+        return null;
+      }
+
+      // Update base user data
+      await user.update({
+        name: userData.name,
+        email: userData.email,
+        mobile: userData.mobile,
+        ...(userData.password && {
+          password: await bcrypt.hash(userData.password, 10)
+        })
+      }, { transaction });
+
+      // Update profile data based on category
+      switch (user.category) {
+        case 'Admin':
+          await AdminProfile.update(
+            { role: userData.role },
+            { where: { userId: id }, transaction }
+          );
+          break;
+        case 'Trainer':
+          await TrainerProfile.update(
+            { role: userData.role },
+            { where: { userId: id }, transaction }
+          );
+          break;
+        case 'Student':
+          await StudentProfile.update(
+            {
+              courseTitle: userData.courseTitle,
+              learningMode: userData.learningMode,
+              feeDetail: userData.feeDetail,
+              paymentMode: userData.paymentMode
+            },
+            { where: { userId: id }, transaction }
+          );
+          break;
+      }
+
+      await transaction.commit();
+      return this.getUserById(id);
     } catch (error) {
-      console.error('Error in getUserById:', error);
+      await transaction.rollback();
       throw error;
     }
   }
 
-  static async updateUser(
-    id: number,
-    username: string,
-    email: string,
-    role: "Admin" | "Trainer" | "Learner"
-  ): Promise<User | null> {
-    const user = await User.findByPk(id);
-    if (user) {
-      return user.update({ username, email, role });
-    }
-    return null;
-  }
-
   static async deleteUser(id: number): Promise<boolean> {
-    const deletedCount = await User.destroy({
-      where: { id },
-    });
-    return deletedCount > 0;
-  }
-
-  private static generateRandomPassword(): string {
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let password = "";
-    for (let i = 0; i < 6; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
-  }
-
-  private static async sendWelcomeEmail(
-    email: string,
-    username: string,
-    password: string,
-    role: string
-  ): Promise<void> {
+    const transaction = await sequelize.transaction();
     try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: "shoubhik1801@gmail.com",
-          pass: "lcte plfw wais gaqd",
-        },
+      // First, find the user to get their category
+      const user = await User.findByPk(id);
+      if (!user) {
+        await transaction.rollback();
+        return false;
+      }
+
+      // Delete the corresponding profile based on user category
+      switch (user.category) {
+        case 'Admin':
+          await AdminProfile.destroy({
+            where: { userId: id },
+            transaction
+          });
+          break;
+        case 'Trainer':
+          await TrainerProfile.destroy({
+            where: { userId: id },
+            transaction
+          });
+          break;
+        case 'Student':
+          await StudentProfile.destroy({
+            where: { userId: id },
+            transaction
+          });
+          break;
+      }
+
+      // Then delete the user
+      const deleted = await User.destroy({
+        where: { id },
+        transaction
       });
 
-      const mailOptions = {
-        from: "shoubhik1801@gmail.com",
-        to: email,
-        subject: "Welcome to Our Platform",
-        text: `
-          Account created successfully!
-          
-          Username: ${username}
-          Email: ${email}
-          Password: ${password}
-          Role: ${role}
-          
-          Please change your password after your first login.
-        `,
-      };
-
-      await transporter.sendMail(mailOptions);
-      console.log("Email sent successfully");
-    } catch (error: any) {
-      console.error("Error sending email:", error);
-      throw new Error("Failed to send welcome email");
+      await transaction.commit();
+      return deleted > 0;
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
     }
+  }
+
+  static async searchUsers(query: string): Promise<User[]> {
+    return User.findAll({
+      where: {
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${query}%` } },
+          { email: { [Op.iLike]: `%${query}%` } }
+        ]
+      },
+      include: [
+        { 
+          model: AdminProfile,
+          as: 'adminProfile',
+          required: false
+        },
+        { 
+          model: TrainerProfile,
+          as: 'trainerProfile',
+          required: false
+        },
+        { 
+          model: StudentProfile,
+          as: 'studentProfile',
+          required: false
+        }
+      ],
+      attributes: { exclude: ['password'] }
+    });
+  }
+
+  static async assignBatches(userId: number, batchIds: number[]): Promise<void> {
+    const transaction = await sequelize.transaction();
+    try {
+      const user = await User.findByPk(userId);
+      if (!user || user.category !== 'Student') {
+        throw new Error('Student not found');
+      }
+
+      const batches = await Batch.findAll({
+        where: {
+          id: batchIds
+        }
+      });
+
+      // @ts-ignore - TypeScript doesn't recognize the association method
+      await user.setBatches(batches, { transaction });
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  static async getStudentBatches(userId: number): Promise<Batch[]> {
+    const user = await User.findByPk(userId, {
+      include: [{
+        model: Batch,
+        as: 'batches',
+        through: { attributes: [] }
+      }]
+    });
+
+    if (!user || user.category !== 'Student') {
+      throw new Error('Student not found');
+    }
+
+    return user.batches || [];
   }
 }

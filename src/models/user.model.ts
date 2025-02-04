@@ -1,25 +1,103 @@
-import { DataTypes, Model, Optional } from 'sequelize';
+import { DataTypes, Model } from 'sequelize';
 import sequelize from '../database';
-import bcrypt from 'bcrypt';
+import { Batch, BatchStudent } from './batch.model';
 
-interface UserAttributes {
+// Define interfaces for profiles
+interface AdminProfileAttributes {
   id: number;
-  username: string;
-  email: string;
-  password: string;
-  role: 'Admin' | 'Trainer' | 'Learner';
+  userId: number;
+  role: 'SuperAdmin' | 'SubAdmin';
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id'> {}
+interface TrainerProfileAttributes {
+  id: number;
+  userId: number;
+  role: 'SrTrainer' | 'JrTrainer';
+}
 
-export class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
+interface StudentProfileAttributes {
+  id: number;
+  userId: number;
+  courseTitle: string;
+  learningMode: 'Online' | 'Offline';
+  feeDetail: string;
+  paymentMode: string;
+}
+
+// Base User Model
+export class User extends Model {
   public id!: number;
-  public username!: string;
+  public name!: string;
   public email!: string;
   public password!: string;
-  public role!: 'Admin' | 'Trainer' | 'Learner';
+  public mobile!: number;
+  public category!: 'Admin' | 'Trainer' | 'Student';
+
+  // Add profile associations
+  public adminProfile?: AdminProfile;
+  public trainerProfile?: TrainerProfile;
+  public studentProfile?: StudentProfile;
+  public readonly batches?: any[];
+
+  // Update the batches association
+  static associate() {
+    // Admin Profile Association
+    User.hasOne(AdminProfile, {
+      foreignKey: 'userId',
+      as: 'adminProfile',
+    });
+
+    // Trainer Profile Association
+    User.hasOne(TrainerProfile, {
+      foreignKey: 'userId',
+      as: 'trainerProfile',
+    });
+
+    // Student Profile Association
+    User.hasOne(StudentProfile, {
+      foreignKey: 'userId',
+      as: 'studentProfile',
+    });
+
+    // Batch Association (for students)
+    User.belongsToMany(Batch, {
+      through: {
+        model: BatchStudent
+      },
+      foreignKey: 'studentId',
+      as: 'batches'
+    });
+
+    // Batch Association (for trainers) 
+    User.hasMany(Batch, {
+      foreignKey: 'trainerId',
+      as: 'trainerBatches'
+    });
+  }
 }
 
+export class AdminProfile extends Model implements AdminProfileAttributes {
+  public id!: number;
+  public userId!: number;
+  public role!: 'SuperAdmin' | 'SubAdmin';
+}
+
+export class TrainerProfile extends Model implements TrainerProfileAttributes {
+  public id!: number;
+  public userId!: number;
+  public role!: 'SrTrainer' | 'JrTrainer';
+}
+
+export class StudentProfile extends Model implements StudentProfileAttributes {
+  public id!: number;
+  public userId!: number;
+  public courseTitle!: string;
+  public learningMode!: 'Online' | 'Offline';
+  public feeDetail!: string;
+  public paymentMode!: string;
+}
+
+// Initialize models
 User.init(
   {
     id: {
@@ -27,10 +105,9 @@ User.init(
       autoIncrement: true,
       primaryKey: true,
     },
-    username: {
+    name: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
     },
     email: {
       type: DataTypes.STRING,
@@ -41,8 +118,12 @@ User.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    role: {
-      type: DataTypes.ENUM('Admin', 'Trainer', 'Learner'),
+    mobile: {
+      type: DataTypes.BIGINT,
+      allowNull: false,
+    },
+    category: {
+      type: DataTypes.ENUM('Admin', 'Trainer', 'Student'),
       allowNull: false,
     },
   },
@@ -52,31 +133,89 @@ User.init(
   }
 );
 
-// Add more models as needed
-
-export const models = {
-  User,
-  // Add other models here
-};
-
-// Function to sync all models with the database
-export async function syncDatabase() {
-  await sequelize.sync({ alter: true });
-  console.log('Database synced');
-
-  // Check if the default admin user exists
-  const defaultAdmin = await User.findOne({ where: { email: 'admin@gmail.com' } });
-
-  if (!defaultAdmin) {
-    // Create the default admin user
-    await User.create({
-      username: 'admin',
-      email: 'admin@gmail.com',
-      password: await bcrypt.hash('admin', 10), // Hash the password
-      role: 'Admin',
-    });
-    console.log('Default admin user created');
-  } else {
-    console.log('Default admin user already exists');
+AdminProfile.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: User,
+        key: 'id',
+      },
+    },
+    role: {
+      type: DataTypes.ENUM('SuperAdmin', 'SubAdmin'),
+      allowNull: false,
+    },
+  },
+  {
+    sequelize,
+    modelName: 'AdminProfile',
   }
-}
+);
+
+TrainerProfile.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: User,
+        key: 'id',
+      },
+    },
+    role: {
+      type: DataTypes.ENUM('SrTrainer', 'JrTrainer'),
+      allowNull: false,
+    },
+  },
+  {
+    sequelize,
+    modelName: 'TrainerProfile',
+  }
+);
+
+StudentProfile.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: User,
+        key: 'id',
+      },
+    },
+    courseTitle: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    learningMode: {
+      type: DataTypes.ENUM('Online', 'Offline'),
+      allowNull: false,
+    },
+    feeDetail: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    paymentMode: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+  },
+  {
+    sequelize,
+    modelName: 'StudentProfile',
+  }
+);

@@ -1,13 +1,17 @@
 import express from 'express';
 import { CourseController } from '../controllers/course.controller';
+import { authenticate, isSuperAdmin, isSubAdmin } from '../middleware/auth';
 
 const router = express.Router();
 
-// Course routes
-router.post('/', CourseController.createCourse);
-router.get('/', CourseController.getCourses);
-router.get('/:id', CourseController.getCourseById);
-router.put('/:id', CourseController.updateCourse); // Update course
-router.delete('/:id', CourseController.deleteCourse); // Delete course
+// Protected routes
+router.use(authenticate);
 
-export default router;
+// Course CRUD operations
+router.post('/', isSuperAdmin, CourseController.createCourse);
+router.get('/', isSubAdmin, CourseController.getCourses);
+router.get('/:id', isSubAdmin, CourseController.getCourseById);
+router.put('/:id', isSuperAdmin, CourseController.updateCourse);
+router.delete('/:id', isSuperAdmin, CourseController.deleteCourse);
+
+export default router; 

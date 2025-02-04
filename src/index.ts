@@ -1,22 +1,30 @@
 import express from "express";
 import dotenv from "dotenv";
 import userRoutes from "./routes/user.routes";
-import courseRoutes from "./routes/course.routes";
-import chapterRoutes from "./routes/chapter.routes";
-import sessionRoutes from "./routes/session.routes";
 import cors from "cors";
 import { testConnection } from "./database";
 import { initializeDatabase } from "./models";
+import batchRoutes from "./routes/batch.routes";
+import path from 'path';
+import fs from 'fs';
+import courseRoutes from './routes/course.routes';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, '../uploads/batches');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 app.use(cors({
   origin: "http://localhost:5173" 
 }));
 app.use(express.json());
+app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
 // Root route
 app.get("/", (req, res) => {
@@ -29,9 +37,8 @@ app.get("/", (req, res) => {
 
 // Routes
 app.use("/api/users", userRoutes);
+app.use('/api/batches', batchRoutes);
 app.use('/api/courses', courseRoutes);
-app.use('/api/chapters', chapterRoutes);
-app.use('/api/sessions', sessionRoutes);
 
 async function startServer() {
   try {

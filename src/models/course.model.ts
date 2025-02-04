@@ -1,14 +1,23 @@
-import { Model, DataTypes } from 'sequelize';
+import { DataTypes, Model } from 'sequelize';
 import sequelize from '../database';
-import Chapter from './chapter.model';
+import { User } from './user.model';
 
-class Course extends Model {
+export class Course extends Model {
   public id!: number;
   public courseName!: string;
-  public createdAt!: Date;
-  public updatedAt!: Date;
-  public trainerName!: string;
-  public noOfChapters!: number;
+  public trainerId!: number;
+  public totalPrice!: number;
+  public discountPrice?: number;
+  public courseCover?: string;
+  public availabilityType!: 'always' | 'timebound';
+  public availableFrom?: Date;
+  public availableTo?: Date;
+  public itemType?: 'pdf' | 'image' | 'video';
+  public itemUrl?: string;
+
+  // Add association methods
+  public getTrainer!: () => Promise<User>;
+  public setTrainer!: (trainer: User) => Promise<void>;
 }
 
 Course.init(
@@ -22,32 +31,52 @@ Course.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    createdAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
+    trainerId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: 'id',
+      },
     },
-    updatedAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-    trainerName: {
-      type: DataTypes.STRING,
+    totalPrice: {
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
-    noOfChapters: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
+    discountPrice: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+    },
+    courseCover: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    availabilityType: {
+      type: DataTypes.ENUM('always', 'timebound'),
+      allowNull: false,
+      defaultValue: 'always',
+    },
+    availableFrom: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    availableTo: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    itemType: {
+      type: DataTypes.ENUM('pdf', 'image', 'video'),
+      allowNull: true,
+    },
+    itemUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
   },
   {
     sequelize,
     modelName: 'Course',
-    timestamps: true,
   }
 );
 
-// Define associations
-Course.hasMany(Chapter, { foreignKey: 'courseId' });
-Chapter.belongsTo(Course, { foreignKey: 'courseId' });
-
-export default Course;
+export default Course; 

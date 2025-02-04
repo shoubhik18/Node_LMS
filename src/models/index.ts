@@ -1,31 +1,16 @@
 import bcrypt from 'bcrypt';
 import sequelize from '../database';
-import Course from './course.model';
-import Chapter from './chapter.model';
-import Session from './session.model';
-import { User } from './user.model';
-
-// Define associations
-Course.hasMany(Chapter, { 
-  foreignKey: 'courseId',
-  onDelete: 'CASCADE'
-});
-Chapter.belongsTo(Course, { 
-  foreignKey: 'courseId'
-});
-
-Chapter.hasMany(Session, { 
-  foreignKey: 'chapterId',
-  onDelete: 'CASCADE'
-});
-Session.belongsTo(Chapter, { 
-  foreignKey: 'chapterId'
-});
+import { User, AdminProfile, TrainerProfile, StudentProfile } from './user.model';
+import { Batch, BatchStudent } from './batch.model';
+import { setupAssociations } from './associations';
 
 // Function to initialize database
 async function initializeDatabase() {
   try {
-    // Sync all models with force: false and alter: false for production
+    // Setup associations first
+    setupAssociations();
+    
+    // Sync all models
     await sequelize.sync({ force: false, alter: false });
     console.log('Database synchronized');
 
@@ -33,13 +18,28 @@ async function initializeDatabase() {
     const defaultAdmin = await User.findOne({ where: { email: 'admin@gmail.com' } });
 
     if (!defaultAdmin) {
-      await User.create({
-        username: 'admin',
-        email: 'admin@gmail.com',
-        password: await bcrypt.hash('admin', 10),
-        role: 'Admin',
-      });
-      console.log('Default admin user created');
+      const transaction = await sequelize.transaction();
+      
+      try {
+        const user = await User.create({
+          name: 'Default Admin',
+          email: 'admin@gmail.com',
+          password: await bcrypt.hash('admin', 10),
+          mobile: 9876543210,
+          category: 'Admin',
+        }, { transaction });
+
+        await AdminProfile.create({
+          userId: user.id,
+          role: 'SuperAdmin',
+        }, { transaction });
+
+        await transaction.commit();
+        console.log('Default admin user created');
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
     }
   } catch (error) {
     console.error('Database initialization error:', error);
@@ -48,9 +48,11 @@ async function initializeDatabase() {
 }
 
 export {
-  Course,
-  Chapter,
-  Session,
   User,
+  AdminProfile,
+  TrainerProfile,
+  StudentProfile,
+  Batch,
+  BatchStudent,
   initializeDatabase
 }; 
