@@ -12,8 +12,8 @@ interface UserData {
   mobile: number;
   category: 'Admin' | 'Trainer' | 'Student';
   role?: string;
-  courseTitle?: string;
-  learningMode?: 'Online' | 'Offline';
+  courseId?: number;
+  learningMode?: 'Online' | 'Offline' | 'Hybrid';
   feeDetail?: string;
   paymentMode?: string;
 }
@@ -56,7 +56,7 @@ export class UserService {
         case 'Student':
           await StudentProfile.create({
             userId: user.id,
-            courseTitle: userData.courseTitle,
+            courseId: userData.courseId,
             learningMode: userData.learningMode,
             feeDetail: userData.feeDetail,
             paymentMode: userData.paymentMode,
@@ -120,13 +120,20 @@ export class UserService {
         },
         {
           model: Batch,
-          as: 'batches',
-          through: { attributes: [] },
-          include: [{
-            model: Course,
-            as: 'course',
-            attributes: ['id', 'courseName']
-          }]
+          as: filter?.category === 'Trainer' ? 'trainerBatches' : 'enrolledBatches',
+          attributes: ['id', 'batchStartDate', 'batchEndDate', 'batchTimings', 'courseId', 'trainerId'],
+          include: [
+            {
+              model: Course,
+              as: 'course',
+              attributes: ['id', 'courseName']
+            },
+            {
+              model: User,
+              as: 'trainer',
+              attributes: ['id', 'name']
+            }
+          ]
         }
       ]
     });
@@ -149,13 +156,20 @@ export class UserService {
         },
         {
           model: Batch,
-          as: 'batches',
-          through: { attributes: [] },
-          include: [{
-            model: Course,
-            as: 'course',
-            attributes: ['id', 'courseName']
-          }]
+          as: await this.getUserCategory(id) === 'Trainer' ? 'trainerBatches' : 'enrolledBatches',
+          attributes: ['id', 'batchStartDate', 'batchEndDate', 'batchTimings', 'courseId', 'trainerId'],
+          include: [
+            {
+              model: Course,
+              as: 'course',
+              attributes: ['id', 'courseName']
+            },
+            {
+              model: User,
+              as: 'trainer',
+              attributes: ['id', 'name']
+            }
+          ]
         }
       ],
       attributes: { exclude: ['password'] }
@@ -198,7 +212,7 @@ export class UserService {
         case 'Student':
           await StudentProfile.update(
             {
-              courseTitle: userData.courseTitle,
+              courseId: userData.courseId,
               learningMode: userData.learningMode,
               feeDetail: userData.feeDetail,
               paymentMode: userData.paymentMode
@@ -318,8 +332,20 @@ export class UserService {
     const user = await User.findByPk(userId, {
       include: [{
         model: Batch,
-        as: 'batches',
-        through: { attributes: [] }
+        as: 'enrolledBatches',
+        through: { attributes: [] },
+        include: [
+          {
+            model: Course,
+            as: 'course',
+            attributes: ['id', 'courseName']
+          },
+          {
+            model: User,
+            as: 'trainer',
+            attributes: ['id', 'name']
+          }
+        ]
       }]
     });
 
@@ -327,6 +353,12 @@ export class UserService {
       throw new Error('Student not found');
     }
 
-    return user.batches || [];
+    return user.enrolledBatches || [];
+  }
+
+  // Helper method to get user category
+  private static async getUserCategory(id: number): Promise<string | null> {
+    const user = await User.findByPk(id, { attributes: ['category'] });
+    return user ? user.category : null;
   }
 }

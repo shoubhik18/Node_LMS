@@ -14,4 +14,7 @@ router.get('/:id', isSubAdmin, CourseController.getCourseById);
 router.put('/:id', isSuperAdmin, CourseController.updateCourse);
 router.delete('/:id', isSuperAdmin, CourseController.deleteCourse);
 
+// New route to get enrolled students for a course
+router.get('/:id/students', isSubAdmin, CourseController.getEnrolledStudents);
+
 export default router; 

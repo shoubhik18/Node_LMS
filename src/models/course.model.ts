@@ -1,6 +1,6 @@
 import { DataTypes, Model } from 'sequelize';
 import sequelize from '../database';
-import { User } from './user.model';
+import { User, StudentProfile } from './user.model';
 
 export class Course extends Model {
   public id!: number;
@@ -15,9 +15,15 @@ export class Course extends Model {
   public itemType?: 'pdf' | 'image' | 'video';
   public itemUrl?: string;
 
+  // Modify the type of enrolledStudents
+  public enrolledStudents?: StudentProfile[];
+
   // Add association methods
   public getTrainer!: () => Promise<User>;
   public setTrainer!: (trainer: User) => Promise<void>;
+
+  // Add this method to get enrolled students
+  public getEnrolledStudents!: () => Promise<User[]>;
 }
 
 Course.init(

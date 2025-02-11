@@ -148,4 +148,14 @@ export class CourseController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  static async getEnrolledStudents(req: Request, res: Response): Promise<void> {
+    try {
+      const courseId = parseInt(req.params.id);
+      const studentIds = await CourseService.getEnrolledStudents(courseId);
+      res.json(studentIds);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
 } 

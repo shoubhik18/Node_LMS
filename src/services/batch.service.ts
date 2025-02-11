@@ -3,13 +3,7 @@ import sequelize from '../database';
 import { User, TrainerProfile } from '../models/user.model';
 import { BelongsToManySetAssociationsMixin } from 'sequelize';
 import { Course } from '../models/course.model';
-
-// Add this to the Batch class in batch.model.ts
-declare module '../models/batch.model' {
-  interface Batch {
-    setEnrolledStudents: (students: User[], options?: any) => Promise<void>;
-  }
-}
+import { Op } from 'sequelize';
 
 interface BatchData {
   profileImage?: string;
@@ -26,6 +20,15 @@ export class BatchService {
   static async createBatch(batchData: BatchData): Promise<Batch | null> {
     const transaction = await sequelize.transaction();
     try {
+      // Validate input data
+      if (!batchData.trainerId || isNaN(batchData.trainerId)) {
+        throw new Error('Invalid trainer ID');
+      }
+
+      if (!batchData.courseId || isNaN(batchData.courseId)) {
+        throw new Error('Invalid course ID');
+      }
+
       // Check if trainer exists
       const trainer = await User.findOne({
         where: {
@@ -58,43 +61,64 @@ export class BatchService {
             category: 'Student'
           }
         });
-        await batch.setEnrolledStudents(students, { transaction });
+
+        // Use BatchStudent model directly to create associations
+        const batchStudentRecords = students.map(student => ({
+          batchId: batch.id,
+          studentId: student.id
+        }));
+
+        await BatchStudent.bulkCreate(batchStudentRecords, { transaction });
       }
 
       await transaction.commit();
       return this.getBatchById(batch.id);
     } catch (error) {
       await transaction.rollback();
+      console.error('Error in createBatch:', error);
       throw error;
     }
   }
 
   static async getBatches(): Promise<Batch[]> {
-    return Batch.findAll({
-      include: [
-        {
-          model: User,
-          as: 'trainer',
-          attributes: ['id', 'name', 'email'],
-          include: [{
-            model: TrainerProfile,
-            as: 'trainerProfile',
-            attributes: ['role']
-          }]
-        },
-        {
-          model: Course,
-          as: 'course',
-          attributes: ['id', 'courseName', 'totalPrice', 'discountPrice']
-        },
-        {
-          model: User,
-          as: 'enrolledStudents',
-          attributes: ['id', 'name', 'email', 'mobile'],
-          through: { attributes: [] }
+    try {
+      return Batch.findAll({
+        include: [
+          {
+            model: User,
+            as: 'trainer',
+            attributes: ['id', 'name', 'email'],
+            include: [{
+              model: TrainerProfile,
+              as: 'trainerProfile',
+              attributes: ['role']
+            }]
+          },
+          {
+            model: Course,
+            as: 'course',
+            attributes: ['id', 'courseName', 'totalPrice', 'discountPrice']
+          },
+          {
+            model: User,
+            as: 'students',
+            attributes: ['id', 'name', 'email', 'mobile'],
+            through: { attributes: [] }
+          }
+        ],
+        where: {
+          trainerId: {
+            [Op.not]: null
+          },
+          courseId: {
+            [Op.not]: null
+          }
         }
-      ]
-    });
+      });
+    } catch (error) {
+      console.error('Error in getBatches:', error);
+      throw new Error('Failed to fetch batches');
+    }
   }
 
   static async getBatchById(id: number): Promise<Batch | null> {
@@ -117,7 +141,7 @@ export class BatchService {
         },
         {
           model: User,
-          as: 'enrolledStudents',
+          as: 'students',
           attributes: ['id', 'name', 'email', 'mobile'],
           through: { attributes: [] }
         }

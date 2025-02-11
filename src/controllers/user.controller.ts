@@ -48,7 +48,7 @@ export class UserController {
           }
           break;
         case 'Student':
-          const studentFields = ['courseTitle', 'learningMode', 'feeDetail', 'paymentMode'];
+          const studentFields = ['courseId', 'learningMode', 'feeDetail', 'paymentMode'];
           const missingStudentFields = studentFields.filter(field => !userData[field]);
           if (missingStudentFields.length > 0) {
             res.status(400).json({ 
@@ -91,7 +91,7 @@ export class UserController {
           ...(user.adminProfile && { role: user.adminProfile.role }),
           ...(user.trainerProfile && { role: user.trainerProfile.role }),
           ...(user.studentProfile && {
-            courseTitle: user.studentProfile.courseTitle,
+            courseId: user.studentProfile.courseId,
             learningMode: user.studentProfile.learningMode
           })
         };
@@ -206,7 +206,7 @@ export class UserController {
           ...(user.adminProfile && { role: user.adminProfile.role }),
           ...(user.trainerProfile && { role: user.trainerProfile.role }),
           ...(user.studentProfile && {
-            courseTitle: user.studentProfile.courseTitle,
+            courseId: user.studentProfile.courseId,
             learningMode: user.studentProfile.learningMode
           })
         }))
@@ -245,15 +245,18 @@ export class UserController {
   static async getStudentBatches(req: Request, res: Response): Promise<void> {
     try {
       const userId = parseInt(req.params.id);
-      const user = await UserService.getUserById(userId);
-      
-      if (!user || user.category !== 'Student') {
-        res.status(404).json({ error: 'Student not found' });
-        return;
-      }
-
       const batches = await UserService.getStudentBatches(userId);
-      res.json(batches);
+      
+      // Transform batches to include trainer details
+      const transformedBatches = batches.map(batch => ({
+        ...batch.toJSON(),
+        trainer: {
+          id: batch.trainer?.id,
+          name: batch.trainer?.name
+        }
+      }));
+
+      res.json(transformedBatches);
     } catch (error) {
       console.error('Error in getStudentBatches:', error);
       res.status(500).json({ error: 'Error fetching student batches' });

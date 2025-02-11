@@ -6,36 +6,55 @@ import { Course } from './course.model';
 export const setupAssociations = () => {
   // User-Profile associations
   User.hasOne(AdminProfile, { 
-    as: 'adminProfile',
-    foreignKey: 'userId'
-  });
-
-  User.hasOne(TrainerProfile, { 
-    as: 'trainerProfile',
-    foreignKey: 'userId'
-  });
-
-  User.hasOne(StudentProfile, { 
-    as: 'studentProfile',
-    foreignKey: 'userId'
+    foreignKey: 'userId',
+    as: 'adminProfile'
   });
 
   AdminProfile.belongsTo(User, {
-    foreignKey: 'userId'
+    foreignKey: 'userId',
+    as: 'user'
+  });
+
+  User.hasOne(TrainerProfile, { 
+    foreignKey: 'userId',
+    as: 'trainerProfile'
   });
 
   TrainerProfile.belongsTo(User, {
-    foreignKey: 'userId'
+    foreignKey: 'userId',
+    as: 'user'
+  });
+
+  User.hasOne(StudentProfile, { 
+    foreignKey: 'userId',
+    as: 'studentProfile'
   });
 
   StudentProfile.belongsTo(User, {
-    foreignKey: 'userId'
+    foreignKey: 'userId',
+    as: 'user'
   });
 
-  // Batch-Course association
-  Batch.belongsTo(Course, {
-    foreignKey: 'courseId',
-    as: 'course'
+  // Course-Trainer association
+  User.hasMany(Course, {
+    foreignKey: 'trainerId',
+    as: 'courses'
+  });
+
+  Course.belongsTo(User, {
+    foreignKey: 'trainerId',
+    as: 'trainer'
+  });
+
+  // Batch associations
+  User.hasMany(Batch, {
+    foreignKey: 'trainerId',
+    as: 'trainerBatches'
+  });
+
+  Batch.belongsTo(User, {
+    foreignKey: 'trainerId',
+    as: 'trainer'
   });
 
   Course.hasMany(Batch, {
@@ -43,37 +62,32 @@ export const setupAssociations = () => {
     as: 'batches'
   });
 
-  // Batch-User (Trainer) association
-  Batch.belongsTo(User, {
-    foreignKey: 'trainerId',
-    as: 'trainer'
+  Batch.belongsTo(Course, {
+    foreignKey: 'courseId',
+    as: 'course'
   });
 
-  // Batch-User (Students) association
-  Batch.belongsToMany(User, {
-    through: BatchStudent,
-    foreignKey: 'batchId',
-    otherKey: 'studentId',
-    as: 'enrolledStudents'
-  });
-
+  // Many-to-Many: User (Students) to Batch
   User.belongsToMany(Batch, {
     through: BatchStudent,
     foreignKey: 'studentId',
-    otherKey: 'batchId',
-    as: 'batches'
+    as: 'enrolledBatches'
   });
 
-  // Course-Trainer association
-  Course.belongsTo(User, {
-    as: 'trainer',
-    foreignKey: 'trainerId',
-    constraints: true,
-    onDelete: 'CASCADE'
+  Batch.belongsToMany(User, {
+    through: BatchStudent,
+    foreignKey: 'batchId',
+    as: 'students'
   });
 
-  User.hasMany(Course, {
-    as: 'courses',
-    foreignKey: 'trainerId'
+  // Course-Student association
+  Course.hasMany(StudentProfile, {
+    foreignKey: 'courseId',
+    as: 'enrolledStudents'
+  });
+
+  StudentProfile.belongsTo(Course, {
+    foreignKey: 'courseId',
+    as: 'course'
   });
 }; 

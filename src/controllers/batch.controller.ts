@@ -53,9 +53,18 @@ export class BatchController {
           profileImageBase64 = `data:${mimeType};base64,${buffer.toString('base64')}`;
         }
 
+        // Validate numeric inputs
+        const trainerId = parseInt(req.body.trainerId);
+        const courseId = parseInt(req.body.courseId);
+
+        if (isNaN(trainerId) || isNaN(courseId)) {
+          res.status(400).json({ error: 'Invalid trainer or course ID' });
+          return;
+        }
+
         const batchData = {
-          trainerId: parseInt(req.body.trainerId),
-          courseId: parseInt(req.body.courseId),
+          trainerId,
+          courseId,
           batchStartDate: new Date(req.body.batchStartDate),
           batchEndDate: new Date(req.body.batchEndDate),
           batchTimings: req.body.batchTimings,
@@ -69,7 +78,10 @@ export class BatchController {
       });
     } catch (error: any) {
       console.error('Error in createBatch:', error);
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ 
+        error: 'Failed to create batch', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   }
 
@@ -78,7 +90,11 @@ export class BatchController {
       const batches = await BatchService.getBatches();
       res.json(batches);
     } catch (error) {
-      res.status(500).json({ error: 'Error fetching batches' });
+      console.error('Detailed error in getBatches:', error);
+      res.status(500).json({ 
+        error: 'Error fetching batches', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   }
 

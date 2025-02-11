@@ -1,6 +1,8 @@
 import { DataTypes, Model } from 'sequelize';
 import sequelize from '../database';
 import { Batch, BatchStudent } from './batch.model';
+import { Course } from './course.model';
+
 
 // Define interfaces for profiles
 interface AdminProfileAttributes {
@@ -18,8 +20,8 @@ interface TrainerProfileAttributes {
 interface StudentProfileAttributes {
   id: number;
   userId: number;
-  courseTitle: string;
-  learningMode: 'Online' | 'Offline';
+  courseId: number;
+  learningMode: 'Online' | 'Offline' | 'Hybrid';
   feeDetail: string;
   paymentMode: string;
 }
@@ -37,7 +39,20 @@ export class User extends Model {
   public adminProfile?: AdminProfile;
   public trainerProfile?: TrainerProfile;
   public studentProfile?: StudentProfile;
-  public readonly batches?: any[];
+  
+  // Update these to match the association aliases
+  public readonly trainerBatches?: Batch[];
+  public readonly enrolledBatches?: Batch[];
+
+  // Optional method to get batches based on user category
+  public getBatches?(): Promise<Batch[]> {
+    if (this.category === 'Trainer') {
+      return Promise.resolve(this.trainerBatches || []);
+    } else if (this.category === 'Student') {
+      return Promise.resolve(this.enrolledBatches || []);
+    }
+    return Promise.resolve([]);
+  }
 
   // Update the batches association
   static associate() {
@@ -59,19 +74,17 @@ export class User extends Model {
       as: 'studentProfile',
     });
 
-    // Batch Association (for students)
-    User.belongsToMany(Batch, {
-      through: {
-        model: BatchStudent
-      },
-      foreignKey: 'studentId',
-      as: 'batches'
-    });
-
-    // Batch Association (for trainers) 
+    // Batch Association (for trainers)
     User.hasMany(Batch, {
       foreignKey: 'trainerId',
       as: 'trainerBatches'
+    });
+
+    // Batch Association (for students)
+    User.belongsToMany(Batch, {
+      through: BatchStudent,
+      foreignKey: 'studentId',
+      as: 'enrolledBatches'
     });
   }
 }
@@ -91,10 +104,13 @@ export class TrainerProfile extends Model implements TrainerProfileAttributes {
 export class StudentProfile extends Model implements StudentProfileAttributes {
   public id!: number;
   public userId!: number;
-  public courseTitle!: string;
-  public learningMode!: 'Online' | 'Offline';
+  public courseId!: number;
+  public learningMode!: 'Online' | 'Offline' | 'Hybrid';
   public feeDetail!: string;
   public paymentMode!: string;
+  
+  // No need to import User, as it's defined in the same file
+  public User?: User;
 }
 
 // Initialize models
@@ -197,12 +213,16 @@ StudentProfile.init(
         key: 'id',
       },
     },
-    courseTitle: {
-      type: DataTypes.STRING,
+    courseId: {
+      type: DataTypes.INTEGER,
       allowNull: false,
+      references: {
+        model: Course,
+        key: 'id'
+      }
     },
     learningMode: {
-      type: DataTypes.ENUM('Online', 'Offline'),
+      type: DataTypes.ENUM('Online', 'Offline', 'Hybrid'),
       allowNull: false,
     },
     feeDetail: {

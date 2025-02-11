@@ -14,15 +14,38 @@ export class Batch extends Model {
   public batchTimings?: string; // Made optional
 
   // Add these declarations for TypeScript
-  public setEnrolledStudents!: (students: User[], options?: any) => Promise<void>;
   public getEnrolledStudents!: (options?: any) => Promise<User[]>;
   public readonly enrolledStudents?: User[];
   
-  // Add trainer association methods
+  // Add these for TypeScript type safety
+  public readonly trainer?: User;
+  public readonly students?: User[];
+  public readonly course?: Course;
+
+  // Explicitly define association methods with correct aliases
   public getTrainer!: () => Promise<User>;
-  public setTrainer!: (trainer: User) => Promise<void>;
+  public getStudents!: () => Promise<User[]>;
   public getCourse!: () => Promise<Course>;
-  public setCourse!: (course: Course) => Promise<void>;
+
+  // Implement the method directly
+  public async setEnrolledStudents(students: User[], options?: any): Promise<void> {
+    if (!this.id) {
+      throw new Error('Batch must be saved before setting students');
+    }
+
+    // Use BatchStudent model to create associations
+    await BatchStudent.destroy({
+      where: { batchId: this.id },
+      ...(options && { transaction: options.transaction })
+    });
+
+    const batchStudentRecords = students.map(student => ({
+      batchId: this.id,
+      studentId: student.id
+    }));
+
+    await BatchStudent.bulkCreate(batchStudentRecords, options);
+  }
 }
 
 Batch.init(
